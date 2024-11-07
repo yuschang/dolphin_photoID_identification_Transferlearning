@@ -88,8 +88,8 @@ def load_trained_model(model_path, device):
     return model
 
 # Setup Dataset
-train_dir = r'C:\Users\obus\Desktop\finTrack\classification_training_dataset\transferTraining_train'
-val_dir = r'C:\Users\obus\Desktop\finTrack\classification_training_dataset\transferTraining_val'
+train_dir = r'trainDataFolder'
+val_dir = r'validationDataFolder'
 img_height, img_width = 224, 224  # Resize to 224x224 to match ResNet50 input size
 batch_size = 32
 
@@ -126,7 +126,7 @@ print("Validation dataset size:", val_dataset_size)
 
 # Initialize device and model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model_path = r'C:\Users\obus\Desktop\finTrack\classification_training_dataset\resnet50-0676ba61.pth'  # Update with the actual path to the single model file
+model_path = r'thefileFullname.pth'  # Update with the actual path to the single model file
 model = load_trained_model(model_path, device).to(device)
 
 # Generate Random Triplets
@@ -234,7 +234,7 @@ def train_model_with_clipping(model, criterion, optimizer, train_loader, val_loa
                 if epoch_loss < best_val_loss:
                     best_val_loss = epoch_loss
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    fine_tuned_model_save_path = f'C:\\Users\\obus\\Desktop\\finTrack\\classification_training_dataset\\train_results\\trainOn35way16shotRealimg\\resnet50_attention_realImg_35W16S_{timestamp}.pth'
+                    fine_tuned_model_save_path = f'DefineYourFileName{timestamp}.pth'
                     torch.save(model.state_dict(), fine_tuned_model_save_path)
                     print(f'New best validation loss: {best_val_loss:.4f}. Model saved to {fine_tuned_model_save_path}.')
 
@@ -251,7 +251,7 @@ model, log = train_model_with_clipping(model, criterion, optimizer, train_triple
 
 # Save the training log
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-log_save_path = f'C:\\Users\\obus\\Desktop\\finTrack\\classification_training_dataset\\train_results\\trainOn35way16shotRealimg\\resnet50_attention_realImg_35W16S_{timestamp}.json'
+log_save_path = f'yourFileName_{timestamp}.json'
 with open(log_save_path, 'w') as f:
     json.dump(log, f)
 
