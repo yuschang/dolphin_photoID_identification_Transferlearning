@@ -1,0 +1,217 @@
+
+
+clc
+clear all
+
+
+folder_rawImg = 'D:\[IndivisualClassification]\finTrack\testImg';
+folder_resultSave = 'D:\[IndivisualClassification]\finTrack\resultFolder';
+folder_sourceCode = 'D:\[IndivisualClassification]\finTrack\sandBox';
+
+cd(folder_sourceCode)
+
+
+
+%>>>>>>>>>>>> step 1 <<<<<<<<<<<<<<<<<
+% *** dolphin body detection from raw survey images ***
+% load the instance detection model
+% Creating an instance of MyReceiver with a string
+instanceDetection_checkpoint = '1.instanceDetection_YOLOv8m_dolphinBody.pt';
+
+% initiate the HED object in python code
+% note: this should initiate only once. if there need reinitiate the object
+% run following code first: segmentationObject.cleanup;
+dolphinBodyDetectionObject = py.dolphinDetector.dolphinBodyDetector(fullfile(folder_sourceCode, instanceDetection_checkpoint));
+dolphinBodyDetection_trainedImgSize = [1006, 708]; % the image size of trained image 
+% segmentationObject.cleanup; % make suree clear all the net after the job is finished
+fileNameList_rawImg = func_getFileNameList_Lightv2(folder_rawImg, {'JPG', 'jpg','png'});
+
+%create the new folder to store detected roi image
+folder_dolphinBodyDetection = fullfile(folder_resultSave,'dolphinBodyDetection');
+if ~isfolder(folder_dolphinBodyDetection)
+    mkdir(folder_dolphinBodyDetection)
+end
+
+for fn = 1: length(fileNameList_rawImg)
+    disp(['>>> Processing: ' num2str( int8(fn/length(fileNameList_rawImg)*100) ) ' %'])
+ 
+    %tmp img path
+    tmpImgName = fileNameList_rawImg{fn};
+    tmpImgPath = fullfile(folder_rawImg, tmpImgName);
+    %read the img
+    rawImg = imread(tmpImgPath);
+    % run detection 
+    boxList = dolphinBodyDetectionObject.detect(tmpImgPath, uint16(dolphinBodyDetection_trainedImgSize));
+    if ~isempty(boxList)
+        [~,imgName,imgformat]= fileparts(tmpImgName);
+        
+    
+        [dolphinBoxfromPy_r, dolphinBoxfromPy] = func_getBoxList(boxList, dolphinBodyDetection_trainedImgSize);
+        if ~isempty(dolphinBoxfromPy_r)
+            for n = 1: size(dolphinBoxfromPy_r,1)
+                rect = dolphinBoxfromPy_r(n,:);
+                %convert python rect to matlab rect format
+                roibox = int16([rect(1)*size(rawImg,2) rect(2)*size(rawImg,1) ...
+                    (rect(3)-rect(1))*size(rawImg,2) (rect(4)-rect(2))*size(rawImg,1)]);
+                %crop image and save the roi img
+                newimgName = fullfile( folder_dolphinBodyDetection,...
+                    strcat(imgName,['_roi_' num2str(roibox(1)) '_' num2str(roibox(2)) '_' num2str(roibox(3)) '_' num2str(roibox(4))],...
+                    imgformat));
+                imwrite(imcrop(rawImg,roibox), newimgName);
+            end
+        end
+    end
+end
+
+
+%>>>>>>>>>>>> step 2 <<<<<<<<<<<<<<<<<
+%*** null class rejection ***
+%load model
+nullRejection_checkpoint = '2.nullClassRejection_yolov8n_cls.pt';
+nullClassRejectorObj = py.nullCLassRejector.nullRejector(fullfile(folder_sourceCode, nullRejection_checkpoint));
+
+%load processing image list
+if isempty(folder_dolphinBodyDetection)
+    errordlg('The folder is empty from previous work','folder empty')
+end
+%create new folder
+folder_dolphinBodyDetection_tp = fullfile(folder_resultSave,'dolphinBodyDetection_tp');
+if ~isfolder(folder_dolphinBodyDetection_tp)
+    mkdir(folder_dolphinBodyDetection_tp)
+end
+%collect image list 
+fileNameList_dolphinBody = func_getFileNameList_Lightv2(folder_dolphinBodyDetection, {'JPG', 'jpg','png'});
+
+%evaluation
+for fn = 1: length(fileNameList_dolphinBody)
+    disp(['>>> Processing: ' num2str( int8(fn/length(fileNameList_dolphinBody)*100) ) ' %'])
+
+    tmpImgName = fileNameList_dolphinBody{fn};
+    tmpImgPath = fullfile(folder_dolphinBodyDetection, tmpImgName);
+    %read the img
+    rawImg = imread(tmpImgPath);
+    %run nullClass evaluation
+    flg = nullClassRejectorObj.checkNull(tmpImgPath);
+    stringFromPython = string(flg);
+    if strcmp(stringFromPython,"dolphin")
+        copyfile(tmpImgPath, fullfile(folder_dolphinBodyDetection_tp,tmpImgName));
+    end
+end
+
+
+%>>>>>>>>>>>> step 3 <<<<<<<<<<<<<<<<<
+%*** dorsal fin track ***
+%load the model
+keypointDetection_checkpoint = '3.keypointDetection_yolov8m_pos.pt';
+keyPointDetectorObj = py.keyPointDetector.keyPointDetector(fullfile(folder_sourceCode, keypointDetection_checkpoint));
+
+%create the new folder to store dorsal fin roi image
+folder_dorsalFinROI = fullfile(folder_resultSave,'dorsalFinROI');
+if ~isfolder(folder_dorsalFinROI)
+    mkdir(folder_dorsalFinROI)
+end
+
+%collect processing image list
+fileNameList_dolphinBody_tp = func_getFileNameList_Lightv2(folder_dolphinBodyDetection_tp, {'JPG', 'jpg','png'});
+
+
+fn = 1;
+
+tmpImgName = fileNameList_dolphinBody_tp{fn};
+tmpImgPath = fullfile(folder_dolphinBodyDetection_tp, tmpImgName);
+
+%read the img
+rawImg = imread(tmpImgPath);
+
+%detect keypoints
+keypoints_in_pixel = keyPointDetectorObj.detect(tmpImgPath);
+keypoints_matlab_matrix = double(keypoints_in_pixel);
+
+roi_exp_ratio = 1.1;
+
+for roiN = 1: size(keypoints_matlab_matrix,1)
+    %collect keypoints
+    tmpROIKeyPoint(:,1) = [keypoints_matlab_matrix(roiN,:,1)]';
+    tmpROIKeyPoint(:,2) = [keypoints_matlab_matrix(roiN,:,2)]';
+
+    % roiBox = [left top width height]
+    roiBox_org = [min(tmpROIKeyPoint(:,1)) min(tmpROIKeyPoint(:,2))...
+        max(tmpROIKeyPoint(:,1))-min(tmpROIKeyPoint(:,1)) max(tmpROIKeyPoint(:,2)-min(tmpROIKeyPoint(:,2)))];
+    
+    % expand the roi and make it square shape
+    squarROIsize = max(roiBox_org(3:4))*roi_exp_ratio;
+    roiCent = [roiBox_org(1)+roiBox_org(3)/2 roiBox_org(2)+roiBox_org(4)/2 ];
+    roiBox_new = zeros(1,4);
+    if roiCent(1)-squarROIsize/2 <=0 % left
+        roiBox_new(1) =1;
+    else
+        roiBox_new(1) = roiCent(1)-squarROIsize/2;
+    end
+    if roiCent(2)-squarROIsize/2 <=0 % top
+        roiBox_new(2) =1;
+    else
+        roiBox_new(2) = roiCent(2)-squarROIsize/2;
+    end
+    if roiCent(1)+squarROIsize/2 >= size(rawImg,2) % width
+        roiBox_new(3) =size(rawImg,2);
+    else
+        roiBox_new(3) = squarROIsize;
+    end
+    if roiCent(2)+squarROIsize/2 >= size(rawImg,1) % height
+        roiBox_new(4) =size(rawImg,1);
+    else
+        roiBox_new(4) = squarROIsize; 
+    end
+    
+
+    % rectangle('Position',roiBox, 'EdgeColor','y', 'LineWidth',2);
+    % scatter(tmpROIKeyPoint(:,1), tmpROIKeyPoint(:,2), 20, 'go' ,'filled'); hold on
+    % scatter(tmpROIKeyPoint(4,1), tmpROIKeyPoint(4,2), 20, 'ro' ,'filled'); hold on
+    
+
+end
+
+
+
+figure
+imagesc(rawImg); hold on
+for roiN = 1: size(keypoints_matlab_matrix,1)
+    tmpROIKeyPoint(:,1) = [keypoints_matlab_matrix(roiN,:,1)]';
+    tmpROIKeyPoint(:,2) = [keypoints_matlab_matrix(roiN,:,2)]';
+
+    % roiBox = [left top width height]
+    roiBox = [min(tmpROIKeyPoint(:,1)) min(tmpROIKeyPoint(:,2))...
+        max(tmpROIKeyPoint(:,1))-min(tmpROIKeyPoint(:,1)) max(tmpROIKeyPoint(:,2)-min(tmpROIKeyPoint(:,2)))];
+    rectangle('Position',roiBox, 'EdgeColor','y', 'LineWidth',2);
+
+   % expand the roi and make it square shape
+    squarROIsize = max(roiBox_org(3:4))*roi_exp_ratio;
+    roiCent = [roiBox_org(1)+roiBox_org(3)/2 roiBox_org(2)+roiBox_org(4)/2 ];
+    roiBox_new = zeros(1,4);
+    if roiCent(1)-squarROIsize/2 <=0 % left
+        roiBox_new(1) =1;
+    else
+        roiBox_new(1) = roiCent(1)-squarROIsize/2;
+    end
+    if roiCent(2)-squarROIsize/2 <=0 % top
+        roiBox_new(2) =1;
+    else
+        roiBox_new(2) = roiCent(2)-squarROIsize/2;
+    end
+    if roiCent(1)+squarROIsize/2 >= size(rawImg,2) % width
+        roiBox_new(3) =size(rawImg,2);
+    else
+        roiBox_new(3) = squarROIsize;
+    end
+    if roiCent(2)+squarROIsize/2 >= size(rawImg,1) % height
+        roiBox_new(4) =size(rawImg,1);
+    else
+        roiBox_new(4) = squarROIsize; 
+    end
+    rectangle('Position',roiBox_new, 'EdgeColor','r', 'LineWidth',2);
+
+    scatter(tmpROIKeyPoint(:,1), tmpROIKeyPoint(:,2), 20, 'go' ,'filled'); hold on
+    scatter(tmpROIKeyPoint(4,1), tmpROIKeyPoint(4,2), 20, 'ro' ,'filled'); hold on
+end
+hold off
+axis image
