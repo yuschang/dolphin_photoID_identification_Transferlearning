@@ -1,9 +1,9 @@
 Bottlenose dolphin identification using synthetic image-based transfer learning
 
-Changsoo Kim
-Ocean System Engineering
-Jeju National University
-yustchangjnu@jejunu.ac.kr
+Changsoo Kim;
+Ocean System Engineering;
+Jeju National University;
+yustchangjnu@jejunu.ac.kr;
 
 ![Graph Abstract](https://github.com/user-attachments/assets/0a4b5206-b7a9-4c7b-bbc8-51b35404e4ba)
 
