@@ -1,0 +1,42 @@
+## colab code for training keypoint detector
+
+import os
+import torch
+from ultralytics import YOLO
+from IPython.display import display
+from IPython import display as ipydisplay
+
+# Set home directory
+HOME = os.getcwd()
+print(HOME)
+
+# Clear previous outputs
+ipydisplay.clear_output()
+
+# Create datasets directory
+datasets_dir = os.path.join(HOME, 'datasets')
+os.makedirs(datasets_dir, exist_ok=True)
+os.chdir(datasets_dir)
+
+from roboflow import Roboflow
+rf = Roboflow(api_key="***")
+project = rf.workspace("***").project("***")
+version = project.version(3)
+dataset = version.download("yolov8")
+
+
+# Return to home directory
+os.chdir(HOME)
+
+# Load YOLO pose model
+model = YOLO('yolov8m-pose.pt')
+
+# Train the model with appropriate parameters
+result = model.train(
+    data=os.path.join(dataset.location, 'data.yaml'),
+    epochs=300,
+    imgsz=640,  # Adjust image size as needed
+    batch=84,  # Adjusted batch size for laptop
+    workers=2,  # Adjusted workers for laptop
+    device='0' if torch.cuda.is_available() else 'cpu'  # Ensure correct device is used
+)
