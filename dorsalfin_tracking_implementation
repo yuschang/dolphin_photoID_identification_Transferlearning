@@ -1,15 +1,11 @@
 
 
-clc
-clear all
 
-
-folder_rawImg = 'D:\[IndivisualClassification]\finTrack\testImg';
-folder_resultSave = 'D:\[IndivisualClassification]\finTrack\resultFolder';
-folder_sourceCode = 'D:\[IndivisualClassification]\finTrack\sandBox';
+folder_rawImg = '***';
+folder_resultSave = '***';
+folder_sourceCode = '***';
 
 cd(folder_sourceCode)
-
 
 
 %>>>>>>>>>>>> step 1 <<<<<<<<<<<<<<<<<
