@@ -1,0 +1,60 @@
+import os
+import torch
+import json
+from datetime import datetime
+from ultralytics import YOLO
+from IPython.display import display
+from IPython import display as ipydisplay
+
+# Set home directory
+HOME = os.getcwd()
+print(HOME)
+
+# Clear previous outputs
+ipydisplay.clear_output()
+
+# Create datasets directory
+datasets_dir = os.path.join(HOME, 'datasets')
+os.makedirs(datasets_dir, exist_ok=True)
+os.chdir(datasets_dir)
+
+# Download dataset from Roboflow
+from roboflow import Roboflow
+rf = Roboflow(api_key="***")
+project = rf.workspace("***").project("***")
+version = project.version(2)
+dataset = version.download("yolov8")
+
+# Return to home directory
+os.chdir(HOME)
+
+# Load YOLO model
+model = YOLO('yolov8m.pt')
+
+# Directory to save results
+results_dir = os.path.join(HOME, 'training_results')
+os.makedirs(results_dir, exist_ok=True)
+
+# Function to save training results to a JSON file
+def save_training_results(results, results_dir):
+    results_dict = {
+        'epoch': results.epoch,
+        'train_loss': results.train_loss,
+        'val_loss': results.val_loss,
+        'metrics': results.metrics,
+    }
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_path = os.path.join(results_dir, f'training_results_{timestamp}.json')
+    with open(results_path, 'w') as f:
+        json.dump(results_dict, f, indent=4)
+    print(f"Training results saved to {results_path}")
+
+# Train the model with appropriate parameters
+result = model.train(
+    data=os.path.join(dataset.location, 'data.yaml'),
+    epochs=400,
+    imgsz=640,  # Adjust image size here
+    batch=32,  # Adjusted batch size for laptop
+    workers=2,  # Adjusted workers for laptop
+    device='0' if torch.cuda.is_available() else 'cpu'  # Ensure correct device is used
+)
